@@ -9,9 +9,66 @@ NEWSKEY = os.environ.get("NEWSAPI_KEY")  # NewsAPI
 MYMEMORY_KEY = os.environ.get("MYMEMORY_KEY")  # MyMemory
 INTERVAL = 60 * 60                           # 1 година 
 
-# ─── Ключові / негативні слова ──────────────────────────────
+
+bot = Bot(TOKEN)
+USERS_FILE = "chat_ids.json"
+SEEN_FILE = "seen.txt"
+
+seen: set[str] = set()
+
+
+# ─── Збереження та завантаження ID ──────────────────────────
+def save_chat_id(chat_id: int):
+    ids = []
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, "r", encoding="utf-8") as f:
+            ids = json.load(f)
+    if chat_id not in ids:
+        ids.append(chat_id)
+        with open(USERS_FILE, "w", encoding="utf-8") as f:
+            json.dump(ids, f)
+
+
+def load_chat_ids():
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+
+# ─── Переклад ────────────────────────────────────────────────
+def translate(text: str, target="uk") -> str:
+    if not text:
+        return text
+    try:
+        source_lang = detect(text)
+        q = urllib.parse.quote(text)
+        url = f"https://api.mymemory.translated.net/get?q={q}&langpair={source_lang}|{target}&key={MYMEMORY_KEY}"
+        data = requests.get(url, timeout=10).json()
+        trans = data.get("responseData", {}).get("translatedText")
+        return trans if trans else text
+    except Exception as e:
+        logging.error("Translate error: %s", e)
+        return text
+
+
+# ─── Завантаження/збереження вже відправлених новин ──────────
+def load_seen():
+    global seen
+    if os.path.exists(SEEN_FILE):
+        with open(SEEN_FILE, "r", encoding="utf-8") as f:
+            seen = set(json.load(f))
+    else:
+        seen = set()
+
+
+def save_seen():
+    with open(SEEN_FILE, "w", encoding="utf-8") as f:
+        json.dump(list(seen), f)
+
+
 KEYWORDS = [
-  "protest", "protests", "riot", "riots", "demonstration", "demonstrations",
+    "protest", "protests", "riot", "riots", "demonstration", "demonstrations",
     "mass rally", "mass rallies", "strike", "strikes", "attack", "attacks",
     "assault", "shooting", "mass shooting", "bomb", "bombing", "explosion",
     "explosions", "blast", "blasts", "terror", "terrorist", "terrorism", "war",
@@ -39,31 +96,11 @@ NEGATIVE = [
     "museum", "history", "culture", "fashion", "recipe", "review"
 ]
 
-bot  = Bot(TOKEN)
-seen = set()
 
-# ─── Простий переклад через MyMemory ────────────────────────
-def translate(text: str, target="uk") -> str:
-    if not text:
-        return text
-    try:
-        src = detect(text)
-        q   = urllib.parse.quote(text)
-
-        # ▸ НЕ додаємо параметр key
-        url = f"https://api.mymemory.translated.net/get?q={q}&langpair={src}|{target}"
-
-        data = requests.get(url, timeout=10).json()
-        return data.get("responseData", {}).get("translatedText", text)
-    except Exception as e:
-        logging.error("Translate error: %s", e)
-        return text
-
-
-# ─── Фільтр «цікаво / ні» ───────────────────────────────────
-def interesting(title: str, desc: str) -> bool:
-    text = f"{title} {desc}".lower()
-    if any(w in text for w in NEGATIVE):
+# ─── Фільтрація новин ───────────────────────────────────────
+def interesting(title: str, description: str) -> bool:
+    text = f"{title or ''} {description or ''}".lower()
+    if any(neg in text for neg in NEGATIVE):
         return False
     hits = 0
     for kw in KEYWORDS:
@@ -73,25 +110,38 @@ def interesting(title: str, desc: str) -> bool:
                 return True
     return False
 
-# ─── Надсилання ────────────────────────────────────────────
+
+# ─── Надсилання всім підписникам ────────────────────────────
 def send(title: str, link: str):
     if link in seen:
         return
     seen.add(link)
-    bot.send_message(
-        CHAT_ID,
-        f"⚠️ <b>{html.escape(translate(title))}</b>\n🔗 {link}",
-        parse_mode="HTML"
-    )
+    title_ua = translate(title)
+    text = f"⚠️ <b>{html.escape(title_ua)}</b>\n🔗 {link}"
+    for chat_id in load_chat_ids():
+        try:
+            bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
+        except Exception as e:
+            logging.error("❗Send error: %s", e)
 
-# ─── Джерело 1 — NewsAPI ──────────────────────────────────
+
+# ─── Джерело 1: NewsAPI ──────────────────────────────────────
 def fetch_newsapi():
-    url = f"https://newsapi.org/v2/everything?q=%2A&pageSize=50&sortBy=publishedAt&apiKey={NEWSKEY}"
-    for art in requests.get(url, timeout=15).json().get("articles", []):
-        if interesting(art.get("title",""), art.get("description","")):
-            send(art.get("title",""), art.get("url",""))
+    try:
+        url = f"https://newsapi.org/v2/everything?q=%2A&pageSize=50&sortBy=publishedAt&apiKey={NEWSKEY}"
+        r = requests.get(url, timeout=15)
+        articles = r.json().get("articles", [])
+        for a in articles:
+            title = a.get("title") or ""
+            desc = a.get("description") or ""
+            link = a.get("url") or ""
+            if interesting(title, desc) and link not in seen:
+                send(title, link)
+    except Exception as e:
+        logging.error("❗NewsAPI error: %s", e)
 
-# ─── Джерело 2 — RSS‑стрічки ──────────────────────────────
+
+# ─── Джерело 2: RSS ──────────────────────────────────────────
 RSS_FEEDS = [
     "https://feeds.bbci.co.uk/news/world/rss.xml",
     "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
@@ -99,42 +149,79 @@ RSS_FEEDS = [
     "https://rsshub.app/telegram/channel/SouthAsiaIndex",
     "https://rsshub.app/telegram/channel/stratcomcentre",
 ]
+
+
 def fetch_rss():
-    for url in RSS_FEEDS:
-        d = feedparser.parse(url)
-        for e in d.entries:
-            title = e.get("title","")
-            body  = e.get("summary","") + (
-                e["content"][0].value if "content" in e and isinstance(e["content"], list) else ""
-            )
-            link  = e.get("link","")
-            if interesting(title, body):
-                send(title, link)
+    # Тестова новина для перевірки надсилання
+    test_title = "🔥 TEST: тестова новина"
+    test_link = "https://example.com/test-news-unique"
+    if test_link not in seen:
+        send(test_title, test_link)
 
-# ─── Джерело 3 — TRT Global (HTML) ────────────────────────
+    for feed_url in RSS_FEEDS:
+        d = feedparser.parse(feed_url)
+        for entry in d.entries:
+            title = entry.get("title", "") or ""
+            summary = entry.get("summary", "") or ""
+            content_html = ""
+            if "content" in entry and isinstance(entry["content"], list):
+                content_html = entry["content"][0].value or ""
+            text_raw = title + " " + summary + " " + content_html
+            soup = BeautifulSoup(text_raw, "html.parser")
+            clean_text = soup.get_text(separator=" ")
+            link = entry.get("link", "") or ""
+            if interesting(clean_text, "") and link not in seen:
+                send(title.strip(), link)
+
+
+# ─── Джерело 3: TRT Global ──────────────────────────────────
 def fetch_trt():
-    soup = BeautifulSoup(
-        requests.get("https://trt.global/russian", timeout=15).text,
-        "html.parser"
-    )
-    for a in soup.select("a.card"):
-        title = a.get("title") or a.text.strip()
-        link  = a.get("href")
-        if link and not link.startswith("http"):
-            link = "https://trt.global" + link
-        if interesting(title, ""):
-            send(title, link)
-
-# ─── Цикл ──────────────────────────────────────────────────
-logging.basicConfig(level=logging.INFO)
-
-while True:
-    logging.info("🔍 Перевірка новин…")
     try:
-        fetch_newsapi()
-        fetch_rss()
-        fetch_trt()
+        url = "https://trt.global/russian"
+        r = requests.get(url, timeout=15)
+        soup = BeautifulSoup(r.text, "html.parser")
+        for article in soup.select("a.card"):
+            title = article.get("title") or article.text.strip()
+            link = article.get("href")
+            if link and not link.startswith("http"):
+                link = "https://trt.global" + link
+            if interesting(title, "") and link not in seen:
+                send(title, link)
     except Exception as e:
-        logging.error("⚠️ Error: %s", e)
-    logging.info("✅ Готово. Сплю 1 год…")
-    time.sleep(INTERVAL)
+        logging.error("❗TRT error: %s", e)
+
+
+# ─── Цикл перевірки новин ───────────────────────────────────
+def news_loop():
+    while True:
+        try:
+            logging.info("🔍 Перевірка новин…")
+            fetch_newsapi()
+            fetch_rss()
+            fetch_trt()
+            save_seen()
+            logging.info("✅ Завершено. Чекаю 1 год…")
+        except Exception as e:
+            logging.error("❗Loop error: %s", e)
+        time.sleep(INTERVAL)
+
+
+# ─── Обробка повідомлень користувачів ───────────────────────
+def handler(update: Update, context: CallbackContext):
+    chat_id = update.message.chat_id
+    save_chat_id(chat_id)
+    update.message.reply_text("✅ Вас підписано на сповіщення. Дякуємо!")
+
+
+# ─── Запуск ──────────────────────────────────────────────────
+logging.basicConfig(level=logging.INFO)
+load_seen()
+
+# Нитка для циклу новин
+threading.Thread(target=news_loop, daemon=True).start()
+
+# Запуск Telegram-бота
+updater = Updater(TOKEN)
+updater.dispatcher.add_handler(MessageHandler(Filters.all, handler))
+updater.start_polling()
+updater.idle()

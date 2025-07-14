@@ -1,0 +1,1 @@
+["https://www.nytimes.com/2025/07/12/world/middleeast/ethiopia-yemen-american-bombs.html", "https://www.nytimes.com/2025/07/12/world/middleeast/palestinians-killed-by-israelis-in-west-bank.html", "https://example.com/test-news-unique", "https://www.nytimes.com/2025/07/14/world/middleeast/syria-clashes-deaths-bedouin-druse.html"]

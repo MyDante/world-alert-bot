@@ -1,14 +1,18 @@
-import time, html, requests, logging, urllib.parse, re, feedparser
+import time, html, requests, logging, urllib.parse, re, feedparser, os, json, threading
 from bs4 import BeautifulSoup
-from telegram import Bot
+from telegram import Bot, Update
+from telegram.ext import Updater, MessageHandler, Filters, CallbackContext
 from langdetect import detect
+from keep_alive import keep_alive
 
-# ─── Твоє (!) — заміні при потребі ──────────────────────────
-TOKEN = os.environ.get("BOT_TOKEN")  # TELEGRAM
-NEWSKEY = os.environ.get("NEWSAPI_KEY")  # NewsAPI
-MYMEMORY_KEY = os.environ.get("MYMEMORY_KEY")  # MyMemory
-INTERVAL = 60 * 60                           # 1 година 
+keep_alive()
 
+# ─── Ваші токени ─────────────────────────────────────────────
+TOKEN = "8104448357:AAHoIyZX-_z7sCxRYYWFsfL5jd1WNEhRYgA"
+NEWSKEY = "15e117b2ecad4146a6a7d42400e6c268"
+MYMEMORY_KEY = "bf82f06cb760de468651"
+INTERVAL = 1  # 1 година
+scheduler.add_job(check_news_and_send, 'interval', hours=INTERVAL)
 
 bot = Bot(TOKEN)
 USERS_FILE = "chat_ids.json"
@@ -65,7 +69,6 @@ def load_seen():
 def save_seen():
     with open(SEEN_FILE, "w", encoding="utf-8") as f:
         json.dump(list(seen), f)
-
 
 KEYWORDS = [
     "protest", "protests", "riot", "riots", "demonstration", "demonstrations",

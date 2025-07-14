@@ -49,11 +49,16 @@ def translate(text: str, target="uk") -> str:
     try:
         src = detect(text)
         q   = urllib.parse.quote(text)
-        url = f"https://api.mymemory.translated.net/get?q={q}&langpair={src}|{target}&key={MYMEMORY_KEY}"
+
+        # ▸ НЕ додаємо параметр key
+        url = f"https://api.mymemory.translated.net/get?q={q}&langpair={src}|{target}"
+
         data = requests.get(url, timeout=10).json()
-        return data.get("responseData", {}).get("translatedText") or text
-    except Exception:
+        return data.get("responseData", {}).get("translatedText", text)
+    except Exception as e:
+        logging.error("Translate error: %s", e)
         return text
+
 
 # ─── Фільтр «цікаво / ні» ───────────────────────────────────
 def interesting(title: str, desc: str) -> bool:

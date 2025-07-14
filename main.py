@@ -12,7 +12,8 @@ import os
 TOKEN = os.environ.get("BOT_TOKEN")
 NEWSKEY = "15e117b2ecad4146a6a7d42400e6c268"
 MYMEMORY_KEY = "bf82f06cb760de468651"
-INTERVAL = 60  # 1 хвилина
+INTERVAL = 1  # 1 година
+scheduler.add_job(check_news_and_send, 'interval', hours=INTERVAL)
 
 bot = Bot(TOKEN)
 USERS_FILE = "chat_ids.json"

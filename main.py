@@ -4,10 +4,9 @@ from telegram import Bot
 from langdetect import detect
 
 # ─── Твоє (!) — заміні при потребі ──────────────────────────
-TOKEN   = "8104448357:AAHoIyZX-_z7sCxRYYWFsfL5jd1WNEhRYgA"
-CHAT_ID = 745933927                          # твій особистий ID
-NEWSKEY = "15e117b2ecad4146a6a7d42400e6c268" # NewsAPI
-MYMEMORY_KEY = "guest"                       # «гість» → працює
+TOKEN = os.environ.get("BOT_TOKEN")  # TELEGRAM
+NEWSKEY = os.environ.get("NEWSAPI_KEY")  # NewsAPI
+MYMEMORY_KEY = os.environ.get("MYMEMORY_KEY")  # MyMemory
 INTERVAL = 60 * 60                           # 1 година
 
 # ─── Ключові / негативні слова ──────────────────────────────

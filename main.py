@@ -8,7 +8,8 @@ from keep_alive import keep_alive
 keep_alive()
 
 # ─── Ваші токени ─────────────────────────────────────────────
-TOKEN = "8104448357:AAHoIyZX-_z7sCxRYYWFsfL5jd1WNEhRYgA"
+import os
+TOKEN = os.environ.get("BOT_TOKEN")
 NEWSKEY = "15e117b2ecad4146a6a7d42400e6c268"
 MYMEMORY_KEY = "bf82f06cb760de468651"
 INTERVAL = 60  # 1 хвилина

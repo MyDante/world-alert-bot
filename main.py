@@ -7,7 +7,7 @@ from langdetect import detect
 TOKEN = os.environ.get("BOT_TOKEN")  # TELEGRAM
 NEWSKEY = os.environ.get("NEWSAPI_KEY")  # NewsAPI
 MYMEMORY_KEY = os.environ.get("MYMEMORY_KEY")  # MyMemory
-INTERVAL = 60 * 60                           # 1 година
+INTERVAL = 60 * 60                           # 1 година 
 
 # ─── Ключові / негативні слова ──────────────────────────────
 KEYWORDS = [

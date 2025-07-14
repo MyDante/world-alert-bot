@@ -1,4 +1,5 @@
 import time, html, requests, logging, urllib.parse, re, feedparser, os, json, threading
+from apscheduler.schedulers.background import BackgroundScheduler
 from bs4 import BeautifulSoup
 from telegram import Bot, Update
 from telegram.ext import Updater, MessageHandler, Filters, CallbackContext

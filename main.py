@@ -1,83 +1,30 @@
-# -------------- main.py  --------------------------------------------------
-import os, time, json, html, logging, re, urllib.parse, requests, feedparser, pytz
+import time, html, requests, logging, urllib.parse, re, feedparser
 from bs4 import BeautifulSoup
+from telegram import Bot
 from langdetect import detect
-from apscheduler.schedulers.background import BackgroundScheduler
-from telegram import Bot, Update
-from telegram.ext import Updater, MessageHandler, Filters, CallbackContext
-from keep_alive import keep_alive      # якщо запускаєш на Render / Replit
 
-# ── 0. Keep‑alive (закоментуй, якщо не потрібен) ──────────────────────────
-keep_alive()
+# ─── Твоє (!) — заміні при потребі ──────────────────────────
+TOKEN   = "8104448357:AAHoIyZX-_z7sCxRYYWFsfL5jd1WNEhRYgA"
+CHAT_ID = 745933927                          # твій особистий ID
+NEWSKEY = "15e117b2ecad4146a6a7d42400e6c268" # NewsAPI
+MYMEMORY_KEY = "guest"                       # «гість» → працює
+INTERVAL = 60 * 60                           # 1 година
 
-# ── 1. Конфіг із .env / Dashboard ─────────────────────────────────────────
-TOKEN        = os.environ.get("BOT_TOKEN")         # Telegram Bot API Token
-NEWSKEY      = os.environ.get("NEWSAPI_KEY")       # NewsAPI ключ
-MYMEMORY_KEY = os.environ.get("MYMEMORY_KEY")      # MyMemory ключ
-
-INTERVAL_H   = 1          # як часто тягнути новини (години)
-USERS_FILE   = "chat_ids.json"
-SEEN_FILE    = "seen.txt"
-
-# ── 2. Telegram‑бот та змінні стану ───────────────────────────────────────
-bot     = Bot(TOKEN)
-updater = Updater(TOKEN)
-seen: set[str] = set()
-
-# ── 3. Chat‑id та seen ‑ утиліти ─────────────────────────────────────────
-def load_chat_ids():
-    if os.path.exists(USERS_FILE):
-        with open(USERS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return []
-
-def save_chat_id(chat_id: int):
-    ids = load_chat_ids()
-    if chat_id not in ids:
-        ids.append(chat_id)
-        with open(USERS_FILE, "w", encoding="utf-8") as f:
-            json.dump(ids, f)
-
-def load_seen():
-    global seen
-    if os.path.exists(SEEN_FILE):
-        with open(SEEN_FILE, "r", encoding="utf-8") as f:
-            seen = set(json.load(f))
-
-def save_seen():
-    with open(SEEN_FILE, "w", encoding="utf-8") as f:
-        json.dump(list(seen), f)
-
-# ── 4. Переклад заголовків ───────────────────────────────────────────────
-def translate(text: str, target="uk") -> str:
-    if not text:
-        return text
-    try:
-        src = detect(text)
-        q   = urllib.parse.quote(text)
-        url = (f"https://api.mymemory.translated.net/get"
-               f"?q={q}&langpair={src}|{target}&key={MYMEMORY_KEY}")
-        data = requests.get(url, timeout=10).json()
-        return data.get("responseData", {}).get("translatedText", text)
-    except Exception as e:
-        logging.error("Translate error: %s", e)
-        return text
-
-# ── 5. Ключові та «чорні» слова ──────────────────────────────────────────
+# ─── Ключові / негативні слова ──────────────────────────────
 KEYWORDS = [
-    "protest", "protests", "riot", "riots", "demonstration", "demonstrations",
+  "protest", "protests", "riot", "riots", "demonstration", "demonstrations",
     "mass rally", "mass rallies", "strike", "strikes", "attack", "attacks",
     "assault", "shooting", "mass shooting", "bomb", "bombing", "explosion",
     "explosions", "blast", "blasts", "terror", "terrorist", "terrorism", "war",
     "invasion", "conflict", "incursion", "clash", "clashes", "протест",
     "протести", "мітинг", "мітинги", "заворушення", "теракт", "терор", "вибух",
-    "бомба", "атака", "удар", "напад", "стрілянина", "обстріл", "ракетний удар",
-    "protesti", "neredi", "štrajk", "napad", "eksplozija", "bomba", "terorizam",
-    "teroristički", "okupljanje", "mitinguri", "grevă", "greve", "atac",
-    "explozie", "explozii", "bombă", "protesto", "gösteri", "eylem", "grev",
-    "isyan", "saldırı", "patlama", "terör", "pradarshan", "hinsa", "danga",
-    "hamla", "visfot", "aatankvad", "gompinga", "maandamano", "shambulio",
-    "mlipuko", "bomu", "uvamizi", "protesta", "manifestación",
+    "бомба", "атака", "удар", "напад", "стрілянина", "обстріл",
+    "ракетний удар", "protesti", "neredi", "štrajk", "napad", "eksplozija",
+    "bomba", "terorizam", "teroristički", "okupljanje", "mitinguri", "grevă",
+    "greve", "atac", "explozie", "explozii", "bombă", "protesto", "gösteri",
+    "eylem", "grev", "isyan", "saldırı", "patlama", "terör", "pradarshan",
+    "hinsa", "danga", "hamla", "visfot", "aatankvad", "gompinga", "maandamano",
+    "shambulio", "mlipuko", "bomu", "uvamizi", "protesta", "manifestación",
     "manifestations", "émeute", "attaque", "grève", "proteste",
     "demonstrationen", "anschlag", "explosionen", "streik", "intifada",
     "hujum", "tafwij", "tasfiyah", "muẓāhara", "iḥtijāj", "baozha", "kongbu",
@@ -93,36 +40,54 @@ NEGATIVE = [
     "museum", "history", "culture", "fashion", "recipe", "review"
 ]
 
-def interesting(title: str, body: str) -> bool:
-    text = f"{title} {body}".lower()
+bot  = Bot(TOKEN)
+seen = set()
+
+# ─── Простий переклад через MyMemory ────────────────────────
+def translate(text: str, target="uk") -> str:
+    if not text:
+        return text
+    try:
+        src = detect(text)
+        q   = urllib.parse.quote(text)
+        url = f"https://api.mymemory.translated.net/get?q={q}&langpair={src}|{target}&key={MYMEMORY_KEY}"
+        data = requests.get(url, timeout=10).json()
+        return data.get("responseData", {}).get("translatedText") or text
+    except Exception:
+        return text
+
+# ─── Фільтр «цікаво / ні» ───────────────────────────────────
+def interesting(title: str, desc: str) -> bool:
+    text = f"{title} {desc}".lower()
     if any(w in text for w in NEGATIVE):
         return False
-    hits = sum(1 for kw in KEYWORDS if re.search(rf"\b{re.escape(kw)}\b", text))
-    return hits >= 2
+    hits = 0
+    for kw in KEYWORDS:
+        if re.search(rf"\b{re.escape(kw)}\b", text):
+            hits += 1
+            if hits >= 2:
+                return True
+    return False
 
-# ── 6. Надсилання повідомлень ─────────────────────────────────
+# ─── Надсилання ────────────────────────────────────────────
 def send(title: str, link: str):
     if link in seen:
         return
     seen.add(link)
-    msg = f"⚠️ <b>{html.escape(translate(title))}</b>\n🔗 {link}"
-    for cid in load_chat_ids():
-        try:
-            bot.send_message(cid, msg, parse_mode="HTML")
-        except Exception as e:
-            logging.error("Send error: %s", e)
+    bot.send_message(
+        CHAT_ID,
+        f"⚠️ <b>{html.escape(translate(title))}</b>\n🔗 {link}",
+        parse_mode="HTML"
+    )
 
-# ── 7. Джерела новин ──────────────────────────────────────────
+# ─── Джерело 1 — NewsAPI ──────────────────────────────────
 def fetch_newsapi():
-    try:
-        url = ("https://newsapi.org/v2/everything?"
-               "q=%2A&pageSize=50&sortBy=publishedAt&apiKey=" + NEWSKEY)
-        for art in requests.get(url, timeout=15).json().get("articles", []):
-            if interesting(art.get("title",""), art.get("description","")):
-                send(art.get("title",""), art.get("url",""))
-    except Exception as e:
-        logging.error("NewsAPI error: %s", e)
+    url = f"https://newsapi.org/v2/everything?q=%2A&pageSize=50&sortBy=publishedAt&apiKey={NEWSKEY}"
+    for art in requests.get(url, timeout=15).json().get("articles", []):
+        if interesting(art.get("title",""), art.get("description","")):
+            send(art.get("title",""), art.get("url",""))
 
+# ─── Джерело 2 — RSS‑стрічки ──────────────────────────────
 RSS_FEEDS = [
     "https://feeds.bbci.co.uk/news/world/rss.xml",
     "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
@@ -130,7 +95,6 @@ RSS_FEEDS = [
     "https://rsshub.app/telegram/channel/SouthAsiaIndex",
     "https://rsshub.app/telegram/channel/stratcomcentre",
 ]
-
 def fetch_rss():
     for url in RSS_FEEDS:
         d = feedparser.parse(url)
@@ -143,47 +107,30 @@ def fetch_rss():
             if interesting(title, body):
                 send(title, link)
 
+# ─── Джерело 3 — TRT Global (HTML) ────────────────────────
 def fetch_trt():
-    try:
-        soup = BeautifulSoup(
-            requests.get("https://trt.global/russian", timeout=15).text,
-            "html.parser"
-        )
-        for a in soup.select("a.card"):
-            title = a.get("title") or a.text.strip()
-            link  = a.get("href")
-            if link and not link.startswith("http"):
-                link = "https://trt.global" + link
-            if interesting(title, ""):
-                send(title, link)
-    except Exception as e:
-        logging.error("TRT error: %s", e)
+    soup = BeautifulSoup(
+        requests.get("https://trt.global/russian", timeout=15).text,
+        "html.parser"
+    )
+    for a in soup.select("a.card"):
+        title = a.get("title") or a.text.strip()
+        link  = a.get("href")
+        if link and not link.startswith("http"):
+            link = "https://trt.global" + link
+        if interesting(title, ""):
+            send(title, link)
 
-# ── 8. Головна перевірка ──────────────────────────────────────
-def check_news_and_send():
-    logging.info("🔍 Перевірка новин…")
-    fetch_newsapi()
-    fetch_rss()
-    fetch_trt()
-    save_seen()
-    logging.info("✅ Завершено.")
-
-# ── 9. APScheduler ────────────────────────────────────────────
-scheduler = BackgroundScheduler(timezone=pytz.utc)
-scheduler.add_job(check_news_and_send, 'interval', hours=INTERVAL_H)
-scheduler.start()
-
-# ── 10. Telegram‑хендлер підписок ────────────────────────────
-def handler(update: Update, context: CallbackContext):
-    save_chat_id(update.message.chat_id)
-    update.message.reply_text("✅ Вас підписано на сповіщення. Дякуємо!")
-
-updater.dispatcher.add_handler(MessageHandler(Filters.all, handler))
-
-# ── 11. Запуск ────────────────────────────────────────────────
+# ─── Цикл ──────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO)
-load_seen()
-check_news_and_send()            # одразу перша перевірка
-updater.start_polling()
-updater.idle()
-# --------------------------------------------------------------------------
+
+while True:
+    logging.info("🔍 Перевірка новин…")
+    try:
+        fetch_newsapi()
+        fetch_rss()
+        fetch_trt()
+    except Exception as e:
+        logging.error("⚠️ Error: %s", e)
+    logging.info("✅ Готово. Сплю 1 год…")
+    time.sleep(INTERVAL)

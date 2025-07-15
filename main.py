@@ -64,9 +64,34 @@ def translate(text: str, target="uk") -> str:
         logging.error("Translate error: %s", e)
         return text
 
-# ── 6. Ключові слова ────────────────────────────────────────
-KEYWORDS = [...]        # (залишив твій список без змін)
-NEGATIVE = [...]        # (залишив твій список без змін)
+KEYWORDS = [
+    "protest", "protests", "riot", "riots", "demonstration", "demonstrations",
+    "mass rally", "mass rallies", "strike", "strikes", "attack", "attacks",
+    "assault", "shooting", "mass shooting", "bomb", "bombing", "explosion",
+    "explosions", "blast", "blasts", "terror", "terrorist", "terrorism", "war",
+    "invasion", "conflict", "incursion", "clash", "clashes", "протест",
+    "протести", "мітинг", "мітинги", "заворушення", "теракт", "терор", "вибух",
+    "бомба", "атака", "удар", "напад", "стрілянина", "обстріл",
+    "ракетний удар", "protesti", "neredi", "štrajk", "napad", "eksplozija",
+    "bomba", "terorizam", "teroristički", "okupljanje", "mitinguri", "grevă",
+    "greve", "atac", "explozie", "explozii", "bombă", "protesto", "gösteri",
+    "eylem", "grev", "isyan", "saldırı", "patlama", "terör", "pradarshan",
+    "hinsa", "danga", "hamla", "visfot", "aatankvad", "gompinga", "maandamano",
+    "shambulio", "mlipuko", "bomu", "uvamizi", "protesta", "manifestación",
+    "manifestations", "émeute", "attaque", "grève", "proteste",
+    "demonstrationen", "anschlag", "explosionen", "streik", "intifada",
+    "hujum", "tafwij", "tasfiyah", "muẓāhara", "iḥtijāj", "baozha", "kongbu",
+    "zhengyi", "youxing"
+]
+
+NEGATIVE = [
+    "greeting", "congratulate", "award", "birthday", "anniversary", "festival",
+    "holiday", "visit", "meeting", "congrats", "speech", "celebration",
+    "declaration", "message", "interview", "wishes", "statement", "calls for",
+    "thank", "fish", "fishing", "economy", "sports", "game", "football",
+    "match", "result", "weather", "coffee", "espresso", "trade", "deal",
+    "museum", "history", "culture", "fashion", "recipe", "review"
+]
 
 def interesting(title: str, body: str) -> bool:
     text = f"{title} {body}".lower()

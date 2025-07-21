@@ -1,26 +1,4 @@
-import os, json, time, html, logging, re, urllib.parse, requests, feedparser
-from bs4 import BeautifulSoup
-from telegram import Bot, Update
-from telegram.ext import Updater, MessageHandler, Filters, CallbackContext
-from langdetect import detect
-from keep_alive import keep_alive
-from apscheduler.schedulers.background import BackgroundScheduler
 
-# ── Keep alive для Replit ────────────────
-keep_alive()
-
-# ── Конфігурація ─────────────────────────
-TOKEN = "8104448357:AAHoIyZX-_z7sCxRYYWFsfL5jd1WNEhRYgA"
-NEWSKEY = "15e117b2ecad4146a6a7d42400e6c268"
-MYMEMORY_KEY = "bf82f06cb760de468651"
-INTERVAL_MIN = 60  # інтервал у хвилинах
-
-USERS_FILE = "chat_ids.json"
-SEEN_FILE = "seen.txt"
-seen = set()
-
-bot = Bot(TOKEN)
-updater = Updater(TOKEN)
 
 
 # ── Підписка ─────────────────────────────

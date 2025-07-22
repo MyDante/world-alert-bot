@@ -1,8 +1,7 @@
-python-telegram-bot
-langdetect
+python-telegram-bot==20.3
+Flask
+apscheduler
+pytz
 requests
 feedparser
 beautifulsoup4
-apscheduler
-flask
-pytz

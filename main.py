@@ -7,9 +7,10 @@ import re
 import urllib.parse
 import requests
 import feedparser
+import pytz
 from bs4 import BeautifulSoup
 from telegram import Bot, Update
-from telegram.ext import Updater, MessageHandler, Filters, CallbackContext
+from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes, filters
 from langdetect import detect
 from keep_alive import keep_alive
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -27,7 +28,6 @@ USERS_FILE = "chat_ids.json"
 SEEN_FILE  = "seen.json"
 seen = set()
 bot = Bot(TOKEN)
-updater = Updater(TOKEN)
 
 # ── Підписка користувачів
 def load_chat_ids():
@@ -60,7 +60,7 @@ def load_seen():
 def save_seen():
     json.dump(list(seen), open(SEEN_FILE, "w", encoding="utf-8"))
 
-# ── Фільтрація ───────────────────────────
+# ── Фільтрація
 KEYWORDS = [
     "protest", "protests", "riot", "riots", "demonstration", "demonstrations",
     "mass rally", "mass rallies", "strike", "strikes", "attack", "attacks",
@@ -90,7 +90,6 @@ NEGATIVE = [
     "museum", "history", "culture", "fashion", "recipe", "review"
 ]
 
-
 def interesting(text: str) -> bool:
     t = text.lower()
     if any(n in t for n in NEGATIVE): return False
@@ -104,17 +103,14 @@ def send(title, link):
     for cid in load_chat_ids():
         bot.send_message(cid, f"⚠️ <b>{html.escape(translate(title))}</b>\n🔗 {link}", parse_mode="HTML")
 
-# ── Fetch news sources
+# ── Fetch news
 RSS_FEEDS = [
-    # основні RSS
     "https://feeds.bbci.co.uk/news/world/rss.xml",
     "https://www.aljazeera.com/xml/rss/all.xml",
     "https://www.reutersagency.com/feed/?best-topics=top-news",
     "https://www.cnn.com/rss/cnn_latest.rss",
-    # телеграм через RSSHub
     "https://rsshub.app/telegram/channel/liveuamap",
-    "https://rsshub.app/telegram/channel/WW3INFO",
-    # при потребі додай ще
+    "https://rsshub.app/telegram/channel/WW3INFO"
 ]
 
 def fetch():
@@ -128,25 +124,24 @@ def fetch():
                 send(title, link)
     save_seen()
 
-# ── Scheduler
 def check_news_and_send():
     logging.info("🔍 Checking news…")
     fetch()
     logging.info("✅ Done.")
 
-scheduler = BackgroundScheduler()
+scheduler = BackgroundScheduler(timezone=pytz.UTC)
 scheduler.add_job(check_news_and_send, "interval", minutes=INTERVAL_MIN)
 scheduler.start()
 
-# ── Telegram handler
-def handler(update: Update, ctx: CallbackContext):
+# ── Telegram
+async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_chat_id(update.message.chat_id)
-    update.message.reply_text("✅ Підписано!")
+    await update.message.reply_text("✅ Підписано!")
 
-updater.dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handler))
+app = ApplicationBuilder().token(TOKEN).build()
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handler))
 
 # ── Run
 logging.basicConfig(level=logging.INFO)
 load_seen()
-updater.start_polling()
-updater.idle()
+app.run_polling()

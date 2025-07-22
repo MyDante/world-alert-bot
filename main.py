@@ -7,13 +7,13 @@ import re
 import urllib.parse
 import requests
 import feedparser
-import pytz
 from bs4 import BeautifulSoup
-from telegram import Bot, Update
-from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes, filters
 from langdetect import detect
 from keep_alive import keep_alive
 from apscheduler.schedulers.background import BackgroundScheduler
+
+from telegram import Update, Bot
+from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes, filters
 
 # ── Keep-alive (Flask)
 keep_alive()
@@ -22,10 +22,10 @@ keep_alive()
 TOKEN = "8104448357:AAHoIyZX-_z7sCxRYYWFsfL5jd1WNEhRYgA"
 NEWSKEY = "15e117b2ecad4146a6a7d42400e6c268"
 MYMEMORY_KEY = "bf82f06cb760de468651"
-INTERVAL_MIN = 30  # інтервал у хвилинах
+INTERVAL_MIN = 30
 
 USERS_FILE = "chat_ids.json"
-SEEN_FILE  = "seen.json"
+SEEN_FILE = "seen.json"
 seen = set()
 bot = Bot(TOKEN)
 
@@ -45,7 +45,7 @@ def save_chat_id(chat_id: int):
 def translate(text: str, target="uk") -> str:
     try:
         src = detect(text)
-        q   = urllib.parse.quote(text)
+        q = urllib.parse.quote(text)
         url = f"https://api.mymemory.translated.net/get?q={q}&langpair={src}|{target}&key={MYMEMORY_KEY}"
         return requests.get(url, timeout=10).json().get("responseData", {}).get("translatedText", text)
     except:
@@ -92,56 +92,59 @@ NEGATIVE = [
 
 def interesting(text: str) -> bool:
     t = text.lower()
-    if any(n in t for n in NEGATIVE): return False
+    if any(n in t for n in NEGATIVE):
+        return False
     hits = sum(1 for kw in KEYWORDS if re.search(rf"\b{re.escape(kw)}\b", t))
     return hits >= 1
 
 # ── Send
 def send(title, link):
-    if link in seen: return
+    if link in seen:
+        return
     seen.add(link)
     for cid in load_chat_ids():
         bot.send_message(cid, f"⚠️ <b>{html.escape(translate(title))}</b>\n🔗 {link}", parse_mode="HTML")
 
-# ── Fetch news
+# ── RSS
 RSS_FEEDS = [
     "https://feeds.bbci.co.uk/news/world/rss.xml",
     "https://www.aljazeera.com/xml/rss/all.xml",
     "https://www.reutersagency.com/feed/?best-topics=top-news",
     "https://www.cnn.com/rss/cnn_latest.rss",
     "https://rsshub.app/telegram/channel/liveuamap",
-    "https://rsshub.app/telegram/channel/WW3INFO"
+    "https://rsshub.app/telegram/channel/WW3INFO",
 ]
 
 def fetch():
     for url in RSS_FEEDS:
         d = feedparser.parse(url)
         for e in d.entries:
-            title = e.get("title","") or ""
-            txt = (e.get("summary","") or "") + " " + getattr(e, "content", [{}])[0].get("value","")
-            link = e.get("link","") or ""
+            title = e.get("title", "") or ""
+            txt = (e.get("summary", "") or "") + " " + getattr(e, "content", [{}])[0].get("value", "")
+            link = e.get("link", "") or ""
             if link and interesting(title + " " + txt):
                 send(title, link)
     save_seen()
 
+# ── Scheduler
 def check_news_and_send():
     logging.info("🔍 Checking news…")
     fetch()
     logging.info("✅ Done.")
 
-scheduler = BackgroundScheduler(timezone=pytz.UTC)
+scheduler = BackgroundScheduler(timezone="UTC")  # ← Додали timezone
 scheduler.add_job(check_news_and_send, "interval", minutes=INTERVAL_MIN)
 scheduler.start()
 
-# ── Telegram
+# ── Telegram handler
 async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_chat_id(update.message.chat_id)
     await update.message.reply_text("✅ Підписано!")
 
-app = ApplicationBuilder().token(TOKEN).build()
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handler))
-
-# ── Run
-logging.basicConfig(level=logging.INFO)
-load_seen()
-app.run_polling()
+# ── Run бот
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    load_seen()
+    app = ApplicationBuilder().token(TOKEN).build()
+    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handler))
+    app.run_polling()

@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: world-alert-bot
+    env: python
+    branch: main
+    buildCommand: ""
+    startCommand: "python main.py"
